@@ -7,9 +7,8 @@ __author__ = "adrn <adrn@astro.columbia.edu>"
 # Third-party
 from astropy.utils.misc import isiterable
 import numpy as np
-import pyo
 
-__all__ = []
+__all__ = ['MasterKey']
 
 _all_notes_sharp = ['c','c#','d','d#','e','f','f#','g','g#','a','a#','b']
 _all_notes_flat = ['c','db','d','eb','e','f','gb','g','ab','a','bb','b']
