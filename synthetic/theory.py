@@ -53,19 +53,19 @@ class MasterKey(object):
 
         if isiterable(octave):
             self._root_midi = _note_to_midi(self.root_note, octave[0])
-            self.octave = int(octave)
+            self.octave = map(int,octave)
         else:
             self._root_midi = _note_to_midi(self.root_note, octave)
             self.octave = int(octave)
 
         # get valid notes
-        if isiterable(octave):
-            self.midi_notes = np.array([])
+        if isiterable(self.octave):
+            self.midi_notes = np.array([]).astype(int)
             for octv in self.octave:
-                these_notes = _note_to_midi(self.note, octv) + np.array(mode_map[self.mode])
+                these_notes = _note_to_midi(self.root_note, octv) + np.array(mode_map[self.mode])
                 self.midi_notes = np.append(self.midi_notes, these_notes)
         else:
-            self.midi_notes = _note_to_midi(self.note, self.octave) + np.array(mode_map[self.mode])
+            self.midi_notes = _note_to_midi(self.root_note, self.octave) + np.array(mode_map[self.mode])
 
         self.notes = [_midi_to_note(x) for x in self.midi_notes]
 
