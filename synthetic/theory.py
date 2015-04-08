@@ -5,6 +5,7 @@ from __future__ import division, print_function
 __author__ = "adrn <adrn@astro.columbia.edu>"
 
 # Third-party
+from astropy.utils.misc import isiterable
 import numpy as np
 import pyo
 
@@ -49,18 +50,24 @@ class MasterKey(object):
 
         # parse key - note
         self.root_note = key.lower()
-        self._root_midi = _note_to_midi(self.root_note, octave)
-        self.octave = int(octave)
+
+        if isiterable(octave):
+            self._root_midi = _note_to_midi(self.root_note, octave[0])
+            self.octave = int(octave)
+        else:
+            self._root_midi = _note_to_midi(self.root_note, octave)
+            self.octave = int(octave)
 
         # get valid notes
-        self.midi_notes = self.midi_scale(self.root_note, self.mode, self.octave)
+        if isiterable(octave):
+            self.midi_notes = np.array([])
+            for octv in self.octave:
+                these_notes = _note_to_midi(self.note, octv) + np.array(mode_map[self.mode])
+                self.midi_notes = np.append(self.midi_notes, these_notes)
+        else:
+            self.midi_notes = _note_to_midi(self.note, self.octave) + np.array(mode_map[self.mode])
+
         self.notes = [_midi_to_note(x) for x in self.midi_notes]
 
-    @classmethod
-    def midi_scale(cls, note, mode, octave):
-        offset = _note_to_midi(note, octave)
-        return offset + np.array(mode_map[mode])
-
     def chord(self, xxx):
-        # TODO: pass in, e.g., 'maj' or 'aug4' and get chord from scale?
         pass
