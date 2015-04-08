@@ -40,11 +40,17 @@ def make_anim(w, ix, ntrails=25):
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
+    ax.axvline(0., zorder=-1000)
+    ax.axhline(0., zorder=-1000)
+
     # axis labels
     ax.set_xlabel(r"${0}$".format(ax_names[ix[0]]), fontsize=30)
     ax.set_ylabel(r"${0}$".format(ax_names[ix[1]]), fontsize=30, rotation='horizontal', labelpad=16)
 
     fig.tight_layout()
+
+    # for i in range(w.shape[1]):
+    #     ax.plot(w[:1000,i,ix[0]], w[:1000,i,ix[1]], marker=None, zorder=-1000)
 
     # initialize drawing points
     pts = ax.scatter(w[0,:,ix[0]], w[0,:,ix[1]],
@@ -71,7 +77,7 @@ def make_anim(w, ix, ntrails=25):
         return pts,  # ,trails
 
     anim = FuncAnimation(fig, animate,
-                         frames=10, interval=1000)  # , blit=True)
+                         frames=100, interval=200)  # , blit=True)
 
     return anim
 
@@ -112,10 +118,10 @@ def main():
 
     # Animate the orbits
     # anim_xy = make_anim(w, [0,1], ntrails=10)
-    # anim_xy.save("/Users/adrian/projects/galaxy-synthesizer/output/xy.mp4")
+    # anim_xy.save("/Users/adrian/projects/galaxy-synthesizer/output/xy.mov", bitrate=-1)
 
     # anim_xz = make_anim(w, [0,2], ntrails=10)
-    # anim_xz.save("/Users/adrian/projects/galaxy-synthesizer/output/xz.mp4", bitrate=-1)
+    # anim_xz.save("/Users/adrian/projects/galaxy-synthesizer/output/xz.mov", bitrate=-1)
 
     # find when orbits cross
     # estimate periods -- find longest and shortest periods
@@ -140,7 +146,7 @@ def main():
         return q
 
     # variable length arrays
-    phi_cross = np.array([argrelmin(pphi)[0] for pphi in phi.T])
+    phi_cross = np.array([argrelmin(pphi)[0] for pphi in (phi % np.pi).T])
     z_cross = np.array([argrelmin(zz**2)[0] for zz in z.T])
 
     s = pyo.Server(audio="offline", nchnls=2, sr=44100).boot()
@@ -159,14 +165,15 @@ def main():
     low_freqs = np.append(low_freqs, low_freqs*2.)
     low_freqs = np.append(low_freqs, low_freqs*2.)
 
-    tone_dur = 1.
+    hi_tone_dur = 0.1
+    lo_tone_dur = 0.5
 
     q_R = quantize(R, nbins=7*3, min=3., max=20.)
 
     _cache = []
     # for j in range(1,nsteps):
     for j in range(1,100):
-        delay = t[j] / dt / 4.
+        delay = t[j] / dt / 5.
         print(t[j], delay)
 
         hif = []
@@ -180,22 +187,24 @@ def main():
                 lof.append(low_freqs[q_R[j,k]])
 
         if len(hif) > 0:
-            env = pyo.Fader(fadein=tone_dur*0.02, fadeout=tone_dur*0.02, dur=tone_dur*0.9, mul=0.01).play(delay=delay, dur=tone_dur+0.1)
-            osc = pyo.Sine(freq=hif, mul=env).mix(voices=norbits)
-            osc.out(delay=delay, dur=tone_dur)
+            env = pyo.Fader(fadein=hi_tone_dur*0.02, fadeout=hi_tone_dur*0.02,
+                            dur=hi_tone_dur*0.9, mul=0.01).play(delay=delay, dur=hi_tone_dur+0.1)
+            osc = pyo.Sine(freq=hif, mul=env).mix(voices=norbits*4)
+            osc.out(delay=delay, dur=hi_tone_dur)
 
             _cache.append(osc)
             _cache.append(env)
 
         if len(lof) > 0:
-            lo_env = pyo.Fader(fadein=tone_dur*0.02, fadeout=tone_dur*0.02, dur=tone_dur*0.9, mul=0.01).play(delay=delay, dur=tone_dur+0.1)
-            lo_osc = pyo.Sine(freq=lof, mul=lo_env).mix(voices=norbits)
-            # lo_osc.out(delay=delay, dur=tone_dur)
-            lo_chorus = pyo.Chorus(lo_osc).out(delay=delay, dur=tone_dur*1.1)
+            lo_env = pyo.Fader(fadein=lo_tone_dur*0.02, fadeout=lo_tone_dur*0.02,
+                               dur=lo_tone_dur*0.9, mul=0.05).play(delay=delay, dur=lo_tone_dur+0.1)
+            lo_osc = pyo.Sine(freq=lof, mul=lo_env).mix(voices=norbits*4)
+            lo_osc.out(delay=delay, dur=lo_tone_dur)
+            # lo_chorus = pyo.Chorus(lo_osc).out(delay=delay, dur=lo_tone_dur)
 
             _cache.append(lo_osc)
             _cache.append(lo_env)
-            _cache.append(lo_chorus)
+            # _cache.append(lo_chorus)
 
         # wave = pyo.SquareTable(order=15).normalize()
         # osc = pyo.Osc(table=wave, freq=j_freqs, mul=env).mix(voices=norbits)
