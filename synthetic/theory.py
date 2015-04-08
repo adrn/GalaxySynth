@@ -60,7 +60,7 @@ class MasterKey(object):
 
         # get valid notes
         if isiterable(self.octave):
-            self.midi_notes = np.array([]).astype(int)
+            self.midi_notes = np.array([], dtype=int)
             for octv in self.octave:
                 these_notes = _note_to_midi(self.root_note, octv) + np.array(mode_map[self.mode])
                 self.midi_notes = np.append(self.midi_notes, these_notes)
