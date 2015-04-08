@@ -6,91 +6,61 @@ __author__ = "adrn <adrn@astro.columbia.edu>"
 
 # Third-party
 import numpy as np
-from astropy import log as logger
-import astropy.units as u
+import pyo
 
-__all__ = ['Scale']
+__all__ = []
 
-_all_notes = np.array(['c','c#','d','d#','e','f','f#','g','g#','a','a#','b'])
-
-# key to frequency
-key_map4 = {'c': 261.63, 'c#': 277.18,
-            'd': 293.66, 'd#': 311.13,
-            'e': 329.63,
-            'f': 349.23, 'f#':369.99,
-            'g': 392.00, 'g#': 415.3,
-            'a': 440.00, 'a#': 466.16,
-            'b': 493.88}
-key_map4['db'] = key_map4['c#']
-key_map4['eb'] = key_map4['d#']
-key_map4['gb'] = key_map4['f#']
-key_map4['ab'] = key_map4['g#']
-key_map4['bb'] = key_map4['a#']
+_all_notes_sharp = ['c','c#','d','d#','e','f','f#','g','g#','a','a#','b']
+_all_notes_flat = ['c','db','d','eb','e','f','gb','g','ab','a','bb','b']
 
 # mode name to index sequence
-mode_map = {'ionian': np.array([0,2,4,5,7,9,11]),
-            'aeolian': np.array([0,2,3,5,7,8,10]),
-            'mixolydian': np.array([0,2,4,5,7,9,10])}
+mode_map = dict(ionian=[0,2,4,5,7,9,11],
+                dorian=[0,2,3,5,7,9,10],
+                phrygian=[0,1,3,5,7,8,10],
+                lydian=[0,2,4,6,7,9,11],
+                mixolydian=[0,2,4,5,7,9,10],
+                aeolian=[0,2,3,5,7,8,10],
+                locrian=[0,1,3,5,6,8,10])
 
-class Scale(object):
+def _note_to_midi(note, octave):
+    try:
+        base_ix = _all_notes_sharp.index(note.lower())
+    except ValueError:
+        try:
+            base_ix = _all_notes_flat.index(note.lower())
+        except ValueError:
+            raise ValueError("Note '{0}' doesn't exist.".format(note))
 
-    def __init__(self, notes=None, key=None, mode=None, octave=4):
+    # convert to a MIDI note number
+    note_num = base_ix + octave*12
+    return note_num
 
-        if notes is None and key is not None and mode is not None:
+def _midi_to_note(midi):
+    return _all_notes_sharp[(midi % 12)]
 
-            if mode.lower() not in mode_map.keys():  # TODO: right now only support natural major/minor
-                raise NotImplementedError("Currently only support {0}".format(",".join(mode_map.keys())))
+class MasterKey(object):
 
-            self.mode = mode.lower()
+    def __init__(self, key, mode, octave=4):
 
-            # parse key - note
-            self.root_note = key.lower()
-            try:
-                key_map4[self.root_note]
-            except KeyError:
-                raise ValueError("Invalid input key '{0}'".format(key))
+        if mode.lower() not in mode_map.keys():
+            raise NotImplementedError("Currently only support the modes: {0}"
+                                      .format(",".join(mode_map.keys())))
+        self.mode = mode.lower()
 
-            # get valid notes
-            self.notes = self.get_scale(self.root_note, self.mode)
+        # parse key - note
+        self.root_note = key.lower()
+        self._root_midi = _note_to_midi(self.root_note, octave)
+        self.octave = int(octave)
 
-        elif notes is not None and key is None:
-            self.notes = [n.lower() for n in notes]
-
-            # assumes notes[0] is the root
-            self.root_note = self.notes[0]
-
-        else:
-            # shouldn't get here if valid input
-            raise ValueError("Either specify a sequency of (string) notes, or "
-                             "an input key and scale name.")
-
-        # convert note names to frequencies
-        fdiv = 2**(octave - 4)
-        self.freqs = np.array([key_map4[note] for note in self.notes]) * fdiv
-
-        # for iterating
-        self._i = 0
+        # get valid notes
+        self.midi_notes = self.midi_scale(self.root_note, self.mode, self.octave)
+        self.notes = [_midi_to_note(x) for x in self.midi_notes]
 
     @classmethod
-    def get_scale(cls, note, mode):
-        note_offset = np.where(_all_notes == note)[0][0]
-        notes_rpt = np.append(_all_notes,_all_notes)
-        return notes_rpt[mode_map[mode] + note_offset]
+    def midi_scale(cls, note, mode, octave):
+        offset = _note_to_midi(note, octave)
+        return offset + np.array(mode_map[mode])
 
     def chord(self, xxx):
         # TODO: pass in, e.g., 'maj' or 'aug4' and get chord from scale?
         pass
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return self.next()
-
-    def next(self):
-        if self._i < len(self.freqs):
-            f = self.freqs[self._i]
-            self._i += 1
-            return f
-        else:
-            raise StopIteration()
