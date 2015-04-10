@@ -12,7 +12,7 @@ import numpy as np
 from scipy.signal import argrelmin, argrelmax
 
 __all__ = ['cyl_orbit_to_events', 'cyl_orbit_to_events2', 'xyz_orbit_to_events',
-           'halo_orbit_to_events']
+           'halo_orbit_to_events', 'elliptical_orbit_to_events', 'elliptical_orbit_to_events2']
 
 def quantize(x, nbins, min=None, max=None):
     if min is None:
@@ -142,8 +142,10 @@ def cyl_orbit_to_events2(t, w, midi_pool_hi, midi_pool_lo):
     T_phi = np.array([gd.peak_to_peak_period(t, phi[:,i]) for i in range(norbits)])
 
     # quantize the periods and map on to notes
-    q_z = quantize(T_z, nbins=len(midi_pool_hi), min=T_z.max(), max=T_z.min())
-    q_phi = quantize(T_phi, nbins=len(midi_pool_lo), min=T_phi.max(), max=T_phi.min())
+    # q_z = quantize(T_z, nbins=len(midi_pool_hi), min=T_z.max(), max=T_z.min())
+    # q_phi = quantize(T_phi, nbins=len(midi_pool_lo), min=T_phi.max(), max=T_phi.min())
+    q_z = quantize(T_z, nbins=len(midi_pool_hi), min=120., max=30.)  # TOTAL HACk
+    q_phi = quantize(T_phi, nbins=len(midi_pool_lo), min=350., max=50.)  # TOTAL HACk
 
     delays = []
     notes = []
@@ -158,7 +160,7 @@ def cyl_orbit_to_events2(t, w, midi_pool_hi, midi_pool_lo):
 
             if j in phi_cross[i]:
                 _no.append(midi_pool_lo[q_phi[i]])
-                _ph.append(normed_R[j,i])
+                _ph.append(1.)
 
         if len(_no) > 0:
             delays.append(t[j])
@@ -203,8 +205,8 @@ def xyz_orbit_to_events(t, w, midi_pool):
     for j in range(w.shape[0]):
         _no = []
         for i in range(w.shape[1]):
-            if j in per[i]:
-                _no.append(midi_pool[q_theta[i,j]])
+            # if j in per[i]:
+            #     _no.append(midi_pool[q_theta[i,j]])
 
             if j in apo[i]:
                 _no.append(midi_pool[q_phi[i,j]])
@@ -240,7 +242,8 @@ def halo_orbit_to_events(t, w, midi_pool):
     y_cross = np.array([argrelmin(yy**2)[0] for yy in y])
     z_cross = np.array([argrelmin(zz**2)[0] for zz in z])
 
-    q_r = quantize(r, nbins=len(midi_pool))
+    q_r = quantize(np.sqrt(r), nbins=len(midi_pool),
+                   max=np.sqrt(r).min(), min=np.sqrt(r).max())
 
     delays = []
     notes = []
@@ -249,6 +252,122 @@ def halo_orbit_to_events(t, w, midi_pool):
         for i in range(w.shape[1]):
             if j in x_cross[i] or j in y_cross[i] or j in z_cross[i]:
                 _no.append(midi_pool[q_r[i,j]])
+
+        if len(_no) > 0:
+            delays.append(t[j])
+            notes.append(np.unique(_no).tolist())
+
+    delays = np.array(delays)
+    notes = np.array(notes)
+
+    return delays, notes
+
+def elliptical_orbit_to_events(t, w):
+    """
+    Convert an orbit to MIDI events using Cartesian coordinates and rules.
+
+    Parameters
+    ----------
+    t : array_like
+    w : array_like
+    midi_pool : array_like
+
+    """
+
+    loop = gd.classify_orbit(w)
+
+    # apocenters
+    x,y,z = w.T[:3]
+    r = np.sqrt(x**2 + y**2 + z**2)
+    apo = np.array([argrelmax(rr)[0] for rr in r])
+
+    # get periods
+    periods = []
+    for i in range(w.shape[1]):
+        if np.any(loop[i] == 1):
+            w2 = gd.align_circulation_with_z(w[:,i], loop[i])
+
+            R = np.sqrt(w2[:,0]**2 + w2[:,1]**2)
+            phi = np.arctan2(w2[:,1], w2[:,0]) % (2*np.pi)
+            z = w2[:,2]
+
+            # loop
+            T1 = gd.peak_to_peak_period(t, R)
+            T2 = gd.peak_to_peak_period(t, phi)
+            T3 = gd.peak_to_peak_period(t, z)
+
+        else:
+            # box
+            T1 = gd.peak_to_peak_period(t, w[:,i,0])
+            T2 = gd.peak_to_peak_period(t, w[:,i,1])
+            T3 = gd.peak_to_peak_period(t, w[:,i,2])
+
+        periods.append([T1,T2,T3])
+
+    freqs = (2*np.pi / np.array(periods)) * 10000.
+
+    delays = []
+    notes = []
+    for j in range(w.shape[0]):
+        _no = []
+        for i in range(w.shape[1]):
+            if j in apo[i]:
+                _no.append(freqs[i].tolist())
+
+        if len(_no) > 0:
+            delays.append(t[j])
+            notes.append(np.unique(_no).tolist())
+
+    delays = np.array(delays)
+    notes = np.array(notes)
+
+    return delays, notes
+
+def elliptical_orbit_to_events2(t, w, x_pool, y_pool, z_pool):
+    """
+    Convert an orbit to MIDI events using Cartesian coordinates and rules.
+
+    For Cartesian orbits...
+
+    Parameters
+    ----------
+    t : array_like
+    w : array_like
+    midi_pool : array_like
+
+    """
+
+    x,y,z = w.T[:3]
+
+    # quantize the periods and map on to notes
+    x_cross = np.array([argrelmin(xx**2)[0] for xx in x])
+    y_cross = np.array([argrelmin(yy**2)[0] for yy in y])
+    z_cross = np.array([argrelmin(zz**2)[0] for zz in z])
+
+    r_x = np.sqrt(y**2 + z**2)
+    r_y = np.sqrt(x**2 + z**2)
+    r_z = np.sqrt(x**2 + y**2)
+
+    q_r_x = quantize(np.sqrt(r_x), nbins=len(x_pool),
+                     max=np.sqrt(r_x).min(), min=np.sqrt(r_x).max())
+    q_r_y = quantize(np.sqrt(r_y), nbins=len(y_pool),
+                     max=np.sqrt(r_y).min(), min=np.sqrt(r_y).max())
+    q_r_z = quantize(np.sqrt(r_z), nbins=len(z_pool),
+                     max=np.sqrt(r_z).min(), min=np.sqrt(r_z).max())
+
+    delays = []
+    notes = []
+    for j in range(w.shape[0]):
+        _no = []
+        for i in range(w.shape[1]):
+            if j in x_cross[i]:
+                _no.append(x_pool[q_r_x[i,j]])
+
+            if j in y_cross[i]:
+                _no.append(y_pool[q_r_y[i,j]])
+
+            if j in z_cross[i]:
+                _no.append(z_pool[q_r_z[i,j]])
 
         if len(_no) > 0:
             delays.append(t[j])

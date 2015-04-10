@@ -14,7 +14,7 @@ import pyo
 # Project
 # ...
 
-__all__ = ['simple_sine', 'filtered_square', 'filtered_saw']
+__all__ = ['simple_sine', 'filtered_square', 'filtered_saw', 'filtered_saw_chord']
 
 def simple_sine(delay, note, amp, dur=1.):
 
@@ -55,9 +55,27 @@ def filtered_saw(delay, note, amp, dur=1.):
 
     env = pyo.Fader(fadein=.02, fadeout=0.02, dur=dur*0.9, mul=amp).play(dur=2.5*dur, delay=delay)
 
-    adsr = pyo.Adsr(attack=dur*0.05, sustain=0.707, decay=0.1*dur, release=dur*0.7,
+    adsr = pyo.Adsr(attack=dur*0.05, decay=0.05*dur, sustain=0.3, release=dur*0.7,
                     dur=dur*0.9, mul=amp).play(dur=2.5*dur, delay=delay)
     osc = pyo.Osc(t, freq=pyo.midiToHz(note), mul=adsr).mix(1)
+
+    rev = pyo.Freeverb(osc, size=1., damp=0.5, bal=1., mul=env).play(dur=2.5*dur, delay=delay)
+    # rev.out(delay=delay, dur=dur)
+
+    eq = pyo.Biquad(rev, freq=800, q=1., type=0).play(dur=2.5*dur, delay=delay)
+    eq.out(delay=delay, dur=dur)
+    # eq = None
+
+    return osc, env, rev, eq
+
+def filtered_saw_chord(delay, freq, amp, dur=1.):
+    t = pyo.SawTable(order=15).normalize()
+
+    env = pyo.Fader(fadein=.02, fadeout=0.02, dur=dur*0.9, mul=amp).play(dur=2.5*dur, delay=delay)
+
+    adsr = pyo.Adsr(attack=dur*0.05, decay=0.05*dur, sustain=0.3, release=dur*0.5,
+                    dur=dur*0.9, mul=amp).play(dur=2.5*dur, delay=delay)
+    osc = pyo.Osc(t, freq=freq, mul=adsr).mix(1)
 
     rev = pyo.Freeverb(osc, size=1., damp=0.5, bal=1., mul=env).play(dur=2.5*dur, delay=delay)
     # rev.out(delay=delay, dur=dur)
