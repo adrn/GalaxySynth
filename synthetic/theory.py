@@ -32,7 +32,7 @@ def _note_to_midi(note, octave):
             raise ValueError("Note '{0}' doesn't exist.".format(note))
 
     # convert to a MIDI note number
-    note_num = base_ix + octave*12
+    note_num = base_ix + (octave+1)*12
     return note_num
 
 def _midi_to_note(midi):
