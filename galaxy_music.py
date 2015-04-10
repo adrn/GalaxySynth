@@ -12,7 +12,6 @@ import sys
 from astropy import log as logger
 import astropy.units as u
 import matplotlib.pyplot as plt
-from  matplotlib.animation import FuncAnimation
 import numpy as np
 from scipy.signal import argrelmin
 # --
@@ -23,205 +22,334 @@ from gary.units import galactic
 
 # Project
 import pyo
-import musak
+import synthetic as syn
 
-def make_anim(w, ix, ntrails=25):
-    ntimes,norbits,_ = w.shape
-    ax_names = ['x','y','z']
+# Global parameters
+mode = 'aeolian'
+key = 'G'
 
-    # create a simple animation
-    fig,ax = plt.subplots(1, 1, figsize=(6,6))
-    ax.set_xlim(-25,25)
-    ax.set_ylim(-25,25)
+# integration
+nsteps = 2000
+dt = 0.25
 
-    # remove ticks and labels
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
+# animation
+nframes = 150
+delay_fac = 0.1
+downsample_anim = 1
+interval = int(1000 * delay_fac * downsample_anim)
 
-    ax.axvline(0., zorder=-1000)
-    ax.axhline(0., zorder=-1000)
+def bulge_no_disk(norbits, make_animations=False, make_audio=False,
+                  path="/Users/adrian/projects/galaxy-synthesizer/output/bulge_no_disk/"):
 
-    # axis labels
-    ax.set_xlabel(r"${0}$".format(ax_names[ix[0]]), fontsize=30)
-    ax.set_ylabel(r"${0}$".format(ax_names[ix[1]]), fontsize=30, rotation='horizontal', labelpad=16)
+    # output path
+    if not os.path.exists(path):
+        os.mkdir(path)
 
-    fig.tight_layout()
-
-    # for i in range(w.shape[1]):
-    #     ax.plot(w[:1000,i,ix[0]], w[:1000,i,ix[1]], marker=None, zorder=-1000)
-
-    # initialize drawing points
-    pts = ax.scatter(w[0,:,ix[0]], w[0,:,ix[1]],
-                     marker='o', s=8, c='#666666')
-    # pts2 = ax.scatter(w[0,:,ix[0]], w[0,:,ix[1]],
-    #                   marker='o', s=16, c='#ff0000')
-    # pts.set_offsets(np.vstack((w[20,:,ix[0]], w[20,:,ix[1]])))
-    # plt.show()
-    # return
-
-    # trails = []
-
-    def animate(i):
-        # ii = i - ntrails
-
-        # pts.set_data(w[i,:,ix[0]], w[i,:,ix[1]])
-        pts.set_offsets(np.vstack((w[i,:,ix[0]], w[i,:,ix[1]])).T)
-        # pts.set_offsets([w[i,0,ix[0]], w[i,0,ix[1]]])
-
-        # for j,trail in zip(range(len(trails))[::-1],trails):
-        #     if ii+j < 0:
-        #         continue
-        #     trail.set_data(w[ii+j,:,ix[0]], w[ii+j,:,ix[1]])
-        return pts,  # ,trails
-
-    anim = FuncAnimation(fig, animate,
-                         frames=100, interval=200)  # , blit=True)
-
-    return anim
-
-def main():
-    np.random.seed(42)
-
-    norbits = 8
-    nsteps = 10000
-    dt = 2.5
-
-    # axisymmetric potential
-    # pot = gp.LogarithmicPotential(v_c=1., r_h=0.1, q1=1., q2=1., q3=0.6,
-    #                               units=galactic)
-    pot = gp.MiyamotoNagaiPotential(m=2E12, a=6.5, b=.26, units=galactic)
-
-    # ------------------------------------------------------------------------
-    # initial conditions
-
-    # position
-    x0 = np.random.uniform(3., 10., size=norbits)
-    y0 = np.zeros_like(x0)
-    z0 = np.random.normal(0., 0.25, size=norbits)
-    xyz0 = np.vstack((x0,y0,z0)).T
-
-    # velocity
-    vx0 = np.zeros_like(x0)
-    vy0 = np.random.normal(1., 0.1, size=norbits)
-    vz0 = np.random.normal(0., 0.005, size=norbits)
-    vxyz0 = np.vstack((vx0,vy0,vz0)).T
-
-    w0 = np.hstack((xyz0,vxyz0))
-
-    # integrate orbits
-    t,w = pot.integrate_orbit(w0, dt=dt, nsteps=nsteps)
-    R = np.sqrt(w[:,:,0]**2 + w[:,:,1]**2)
-    phi = np.arctan2(w[:,:,1], w[:,:,0])
-    z = w[:,:,2]
+    # orbits
+    pot,w0 = syn.make_spheroid(norbits)
+    t,w = pot.integrate_orbit(w0, dt=dt, nsteps=nsteps,
+                              Integrator=gi.DOPRI853Integrator)
+    print("Done integrating")
 
     # Animate the orbits
-    # anim_xy = make_anim(w, [0,1], ntrails=10)
-    # anim_xy.save("/Users/adrian/projects/galaxy-synthesizer/output/xy.mov", bitrate=-1)
+    if make_animations:
+        anim_xy = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,1],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_alpha=0.75, star_color='#F7E739',
+                                     figure_color='#000000',
+                                     xlim=(-1,1), ylim=(-1,1))
+        anim_xy.save(os.path.join(path,"xy.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-    # anim_xz = make_anim(w, [0,2], ntrails=10)
-    # anim_xz.save("/Users/adrian/projects/galaxy-synthesizer/output/xz.mov", bitrate=-1)
+        anim_xz = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_alpha=0.75, star_color='#F7E739',
+                                     figure_color='#000000',
+                                     xlim=(-1,1), ylim=(-1,1))
+        anim_xz.save(os.path.join(path,"xz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-    # find when orbits cross
-    # estimate periods -- find longest and shortest periods
-    periods = np.zeros((norbits,3))
-    for i in range(norbits):
-        periods[i,0] = gd.peak_to_peak_period(t,R[:,i])
-        periods[i,1] = gd.peak_to_peak_period(t,phi[:,i])
-        periods[i,2] = gd.peak_to_peak_period(t,z[:,i])
-    # z is the fastest period, φ is the slowest
+def disk_no_bulge(norbits, make_animations=False, make_audio=False,
+                  path="/Users/adrian/projects/galaxy-synthesizer/output/disk_no_bulge/"):
 
-    # -------------------------------
-    # playground!
+    # output path
+    if not os.path.exists(path):
+        os.mkdir(path)
 
-    def quantize(x, nbins, min=None, max=None):
-        if min is None:
-            min = x.min()
-        if max is None:
-            max = x.max()
-        q = np.round((x - min) / (max - min) * (nbins-1)).astype(int)
-        q[x > max] = max
-        q[x < min] = min
-        return q
+    # orbits
+    pot,w0 = syn.make_disk_galaxy(norbits)
+    t,w = pot.integrate_orbit(w0, dt=dt, nsteps=nsteps,
+                              Integrator=gi.DOPRI853Integrator)
+    print("Done integrating")
 
-    # variable length arrays
-    phi_cross = np.array([argrelmin(pphi)[0] for pphi in (phi % np.pi).T])
-    z_cross = np.array([argrelmin(zz**2)[0] for zz in z.T])
+    # Animate the orbits
+    if make_animations:
+        anim_xy = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,1],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_color='#4085B9', figure_color='#000000',
+                                     xlim=(-14,14), ylim=(-14,14))
+        anim_xy.save(os.path.join(path,"xy.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-    s = pyo.Server(audio="offline", nchnls=2, sr=44100).boot()
-    s.recordOptions(dur=20.,
-                    filename="/Users/adrian/projects/galaxy-synthesizer/output/le_test.wav",
-                    fileformat=0)
+        anim_xz = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_alpha=0.5, star_color='#4085B9',
+                                     figure_color='#000000',
+                                     xlim=(-14,14), ylim=(-14,14))
+        anim_xz.save(os.path.join(path,"xz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-    # define a scale object
-    mode = 'aeolian'
-    key = 'C'
-    high_freqs = musak.Scale(key=key, mode=mode, octave=4).freqs
-    high_freqs = np.append(high_freqs, high_freqs*2.)
-    high_freqs = np.append(high_freqs, high_freqs*2.)
+        R = np.sqrt(w[:,:,0]**2 + w[:,:,1]**2)
+        anim_xz = syn.animate_orbits(R[::downsample_anim], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval,
+                                     star_alpha=0.5, star_color='#4085B9',
+                                     figure_color='#000000', hline=True,
+                                     xlim=(0,16), ylim=(-0.5,0.5), figsize=(8,8))
+        anim_xz.save(os.path.join(path,"Rz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-    low_freqs = musak.Scale(key=key, mode=mode, octave=2).freqs
-    low_freqs = np.append(low_freqs, low_freqs*2.)
-    low_freqs = np.append(low_freqs, low_freqs*2.)
+    if make_audio:
+        # ---------------------------------------------------------------
+        # Playground
+        # s = pyo.Server(nchnls=2, sr=44100).boot()
+        s = pyo.Server(audio="offline", nchnls=1, sr=44100).boot()
+        s.recordOptions(dur=60.,
+                        filename=os.path.join(path, "{0}_{1}.wav".format(key,mode)),
+                        fileformat=0)
 
-    hi_tone_dur = 0.1
-    lo_tone_dur = 0.5
+        # define a scale object
+        mk_hi = syn.MasterKey(key=key, mode=mode, octave=(3,4))
+        mk_lo = syn.MasterKey(key=key, mode=mode, octave=(2,3))
 
-    q_R = quantize(R, nbins=7*3, min=3., max=20.)
+        # -----------------------------------------------------------------
+        # disk
+        events = syn.cyl_orbit_to_events2(t, w[:,:norbits],
+                                          mk_hi.midi_notes, mk_lo.midi_notes)
 
-    _cache = []
-    # for j in range(1,nsteps):
-    for j in range(1,100):
-        delay = t[j] / dt / 5.
-        print(t[j], delay)
+        cache = []
+        for d,n,ph in zip(*events)[:150]:
+            d = d / dt * delay_fac
+            print(d, n)
+            # amp = (np.array(ph)*0.03 + 0.07).tolist()
+            # c = syn.simple_sine(d, n, amp, dur=1.)
+            amp = (np.array(ph)*0.04 + 0.06).tolist()
+            c = syn.filtered_square(d, n, amp, dur=2.)
+            cache.append(c)
 
-        hif = []
-        lof = []
-        for k in range(norbits):
-            if j in z_cross[k]:
-                hif.append(high_freqs[q_R[j,k]])
+        s.recstart()
+        s.start()
+        s.recstop()
+        s.stop()
 
-            if j in phi_cross[k]:
-                print('phi cross', j)
-                lof.append(low_freqs[q_R[j,k]])
+def disk_with_bulge(norbits, make_animations=False, make_audio=False,
+                    path="/Users/adrian/projects/galaxy-synthesizer/output/disk_with_bulge/"):
 
-        if len(hif) > 0:
-            env = pyo.Fader(fadein=hi_tone_dur*0.02, fadeout=hi_tone_dur*0.02,
-                            dur=hi_tone_dur*0.9, mul=0.01).play(delay=delay, dur=hi_tone_dur+0.1)
-            osc = pyo.Sine(freq=hif, mul=env).mix(voices=norbits*4)
-            osc.out(delay=delay, dur=hi_tone_dur)
+    # output path
+    if not os.path.exists(path):
+        os.mkdir(path)
 
-            _cache.append(osc)
-            _cache.append(env)
+    # orbits
+    pot,w0_disk = syn.make_disk_galaxy(norbits)
+    pot,w0_sphe = syn.make_spheroid(norbits)
+    w0 = np.vstack((w0_disk,w0_sphe))
+    t,w = pot.integrate_orbit(w0, dt=dt, nsteps=nsteps,
+                              Integrator=gi.DOPRI853Integrator)
+    print("Done integrating")
 
-        if len(lof) > 0:
-            lo_env = pyo.Fader(fadein=lo_tone_dur*0.02, fadeout=lo_tone_dur*0.02,
-                               dur=lo_tone_dur*0.9, mul=0.05).play(delay=delay, dur=lo_tone_dur+0.1)
-            lo_osc = pyo.Sine(freq=lof, mul=lo_env).mix(voices=norbits*4)
-            lo_osc.out(delay=delay, dur=lo_tone_dur)
-            # lo_chorus = pyo.Chorus(lo_osc).out(delay=delay, dur=lo_tone_dur)
+    # Animate the orbits
+    if make_animations:
+        anim_xy = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,1],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_color='#4085B9', figure_color='#000000',
+                                     xlim=(-14,14), ylim=(-14,14))
+        anim_xy.save(os.path.join(path,"xy.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-            _cache.append(lo_osc)
-            _cache.append(lo_env)
-            # _cache.append(lo_chorus)
+        anim_xz = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_alpha=0.5, star_color='#4085B9',
+                                     figure_color='#000000',
+                                     xlim=(-14,14), ylim=(-14,14))
+        anim_xz.save(os.path.join(path,"xz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-        # wave = pyo.SquareTable(order=15).normalize()
-        # osc = pyo.Osc(table=wave, freq=j_freqs, mul=env).mix(voices=norbits)
-        # verb = pyo.Freeverb(osc, size=1., damp=0.8, bal=0.85).out(delay=delay, dur=tone_dur*2)
-        # chorus = pyo.Chorus(osc).out(delay=delay, dur=tone_dur*2.)
+        R = np.sqrt(w[:,:,0]**2 + w[:,:,1]**2)
+        anim_xz = syn.animate_orbits(R[::downsample_anim], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval,
+                                     star_alpha=0.5, star_color='#4085B9',
+                                     figure_color='#000000', hline=True,
+                                     xlim=(0,16), ylim=(-0.5,0.5), figsize=(8,8))
+        anim_xz.save(os.path.join(path,"Rz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
 
-        # _cache.append(wave)
-        # _cache.append(chorus)
-        # _cache.append(verb)
+    if make_audio:
+        # ---------------------------------------------------------------
+        # Playground
+        # s = pyo.Server(nchnls=2, sr=44100).boot()
+        s = pyo.Server(audio="offline", nchnls=1, sr=44100).boot()
+        s.recordOptions(dur=60.,
+                        filename=os.path.join(path, "{0}_{1}.wav".format(key,mode)),
+                        fileformat=0)
 
-    # print(t[phi_cross[0][0]])
+        # define a scale object
+        mk_hi = syn.MasterKey(key=key, mode=mode, octave=(3,4))
+        mk_lo = syn.MasterKey(key=key, mode=mode, octave=(2,3))
 
-    s.recstart()
-    s.start()
-    s.recstop()
-    s.stop()
-    # s.gui(locals())
+        # -----------------------------------------------------------------
+        # disk
+        events = syn.cyl_orbit_to_events2(t, w[:,:norbits],
+                                          mk_hi.midi_notes, mk_lo.midi_notes)
+
+        cache = []
+        for d,n,ph in zip(*events)[:150]:
+            d = d / dt * delay_fac
+            print(d, n)
+            # amp = (np.array(ph)*0.03 + 0.07).tolist()
+            # c = syn.simple_sine(d, n, amp, dur=1.)
+            amp = (np.array(ph)*0.04 + 0.06).tolist()
+            c = syn.filtered_square(d, n, amp, dur=2.)
+            cache.append(c)
+
+        # -----------------------------------------------------------------
+        # bulge
+        mk = syn.MasterKey(key=key, mode=mode, octave=(4,5))
+        events = syn.xyz_orbit_to_events(t, w[:,norbits:], mk.midi_notes)
+
+        for d,n in zip(*events)[:300]:
+            d = d / dt * delay_fac
+            print(d, n)
+            # c = syn.filtered_square(d, n, 0.05, dur=1.)
+            c = syn.simple_sine(d, n, 0.01, dur=0.25)
+            cache.append(c)
+
+        s.recstart()
+        s.start()
+        s.recstop()
+        s.stop()
+
+def disk_with_bulge_halo(norbits, make_animations=False, make_audio=False,
+                         path="/Users/adrian/projects/galaxy-synthesizer/output/disk_with_bulge_halo/"):
+
+    # output path
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    # orbits
+    pot,w0_disk = syn.make_disk_galaxy(norbits)
+    pot,w0_sphe = syn.make_spheroid(norbits)
+    pot,w0_halo = syn.make_halo(norbits)
+    w0 = np.vstack((w0_disk,w0_sphe,w0_halo))
+    t,w = pot.integrate_orbit(w0, dt=dt, nsteps=nsteps,
+                              Integrator=gi.DOPRI853Integrator)
+    print("Done integrating")
+
+    # Animate the orbits
+    if make_animations:
+        anim_xy = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,1],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_color='#4085B9', figure_color='#000000',
+                                     xlim=(-25,25), ylim=(-25,25))
+        anim_xy.save(os.path.join(path,"xy.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
+
+        anim_xz = syn.animate_orbits(w[::downsample_anim,:,0], w[::downsample_anim,:,2],
+                                     nframes=nframes, interval=interval, figsize=(8,8),
+                                     star_alpha=0.5, star_color='#4085B9',
+                                     figure_color='#000000',
+                                     xlim=(-25,25), ylim=(-25,25))
+        anim_xz.save(os.path.join(path,"xz.mp4"),
+                     bitrate=-1, codec="libx264", extra_args=['-pix_fmt', 'yuv420p'],
+                     savefig_kwargs={'facecolor':'#000000'})
+
+    if make_audio:
+        # ---------------------------------------------------------------
+        # Playground
+        # s = pyo.Server(nchnls=2, sr=44100).boot()
+        s = pyo.Server(audio="offline", nchnls=1, sr=44100).boot()
+        s.recordOptions(dur=60.,
+                        filename=os.path.join(path, "{0}_{1}.wav".format(key,mode)),
+                        fileformat=0)
+
+        # define a scale object
+        mk_hi = syn.MasterKey(key=key, mode=mode, octave=(3,4))
+        mk_lo = syn.MasterKey(key=key, mode=mode, octave=(2,3))
+
+        # -----------------------------------------------------------------
+        # disk
+        events = syn.cyl_orbit_to_events2(t, w[:,:norbits],
+                                          mk_hi.midi_notes, mk_lo.midi_notes)
+
+        cache = []
+        for d,n,ph in zip(*events)[:150]:
+            d = d / dt * delay_fac
+            print(d, n)
+            # amp = (np.array(ph)*0.03 + 0.07).tolist()
+            # c = syn.simple_sine(d, n, amp, dur=1.)
+            amp = (np.array(ph)*0.04 + 0.06).tolist()
+            c = syn.filtered_square(d, n, amp, dur=2.)
+            cache.append(c)
+
+        # -----------------------------------------------------------------
+        # bulge
+        mk = syn.MasterKey(key=key, mode=mode, octave=(4,5))
+        events = syn.xyz_orbit_to_events(t, w[:,norbits:], mk.midi_notes)
+
+        for d,n in zip(*events)[:300]:
+            d = d / dt * delay_fac
+            print(d, n)
+            # c = syn.filtered_square(d, n, 0.05, dur=1.)
+            c = syn.simple_sine(d, n, 0.01, dur=0.25)
+            cache.append(c)
+
+        # -----------------------------------------------------------------
+        # halo
+        mk = syn.MasterKey(key=key, mode=mode, octave=1)
+        events = syn.halo_orbit_to_events(t, w[:,2*norbits:], mk.midi_notes[::2])
+
+        for d,n in zip(*events)[:200]:
+            d = d / dt * delay_fac
+            print(d, n)
+            c = syn.filtered_saw(d, n, 0.2, dur=5.)
+            cache.append(c)
+
+        s.recstart()
+        s.start()
+        s.recstop()
+        s.stop()
+
+def main():
+    np.random.seed(4)
+
+    # these are just for visualization earlier in the talk
+    # disk_no_bulge(norbits=1024, make_animations=True, make_audio=False,
+    #               path="/Users/adrian/projects/galaxy-synthesizer/output/disk_no_bulge1024/")
+
+    # bulge_no_disk(norbits=1024, make_animations=True, make_audio=False,
+    #               path="/Users/adrian/projects/galaxy-synthesizer/output/bulge_no_disk1024/")
+
+    # these are to make music
+    # np.random.seed(4)
+    # disk_no_bulge(norbits=8, make_animations=False, make_audio=True)
+
+    # np.random.seed(4)
+    # disk_with_bulge(norbits=8, make_animations=False, make_audio=True)
+
+    np.random.seed(4)
+    disk_with_bulge_halo(norbits=8, make_animations=True, make_audio=False)
+
+    # wave = pyo.SquareTable(order=15).normalize()
+    # osc = pyo.Osc(table=wave, freq=j_freqs, mul=env).mix(voices=norbits)
+    # verb = pyo.Freeverb(osc, size=1., damp=0.8, bal=0.85).out(delay=delay, dur=tone_dur*2)
+    # chorus = pyo.Chorus(osc).out(delay=delay, dur=tone_dur*2.)
 
 if __name__ == "__main__":
     main()
